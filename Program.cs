@@ -1,3 +1,4 @@
+using BlogPage.Application.Comments;
 using BlogPage.Application.Posts;
 using BlogPage.Endpoints;
 using BlogPage.Persistence.Context;
@@ -61,6 +62,7 @@ builder.Services
     });
 
 builder.Services.AddScoped<PostService>();
+builder.Services.AddScoped<CommentService>();
 
 builder.Services.AddAuthorization();
 //build

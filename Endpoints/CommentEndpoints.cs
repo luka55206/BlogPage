@@ -13,34 +13,33 @@ public static class CommentEndpoints
     {
         // create comment
         app.MapPost("posts/{id}/comments",
-            async (int id, CreateCommentRequest request, ClaimsPrincipal userPrincipal, BlogDbContext db) =>
+            async (int id, CreateCommentRequest request, ClaimsPrincipal userPrincipal, BlogDbContext db, CommentService commentService) =>
             {
-                var post = await db.Posts.FindAsync(id);
-                
-                if (post == null)
-                    return Results.NotFound();
-                
+               
                 var userIdClaim = userPrincipal.Claims.FirstOrDefault(claim => claim.Type == ClaimTypes.NameIdentifier)?.Value;
                 
                 if (userIdClaim == null)
                     return Results.Unauthorized();
                 
                 int authorId = int.Parse(userIdClaim);
-                
-                var comment = new Comment
+
+                var commentCommand = new CreateCommentCommand
+                    (id, 
+                    authorId,
+                    request.Content);
+
+
+                try
                 {
-                    PostId = id,
-                    UserId = authorId,
-                    Content = request.Content,
-                    DateCreated = DateTime.UtcNow,
-                };
+                    var commentDto = await commentService.CreateCommentAsync(commentCommand);
+
+                    return Results.Created($"comments/{commentDto.Id}", commentDto);
+                }
+                catch (KeyNotFoundException ex)
+                {
+                    return Results.NotFound(ex.Message);
+                }
                 
-                db.Comments.Add(comment);
-                await db.SaveChangesAsync();
-                
-                await db.Entry(comment).Reference(a => a.User).LoadAsync();
-                
-                return Results.Created($"comments/{comment.Id}", CommentMapper.toDto(comment));
                 
                 
 
