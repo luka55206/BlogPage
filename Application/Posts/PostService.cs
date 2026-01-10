@@ -13,7 +13,7 @@ public class PostService
         _db = db;
     }
     
-    public  async Task<PostDto> CreateAsync(
+    public  async Task<PostDto> CreatePostAsync(
         CreatePostCommand postCommand)
     {
         var cleanTags = postCommand.Tags

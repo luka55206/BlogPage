@@ -26,7 +26,7 @@ public static class PostEndpoints
                  request.Content,
                  request.Tags);
              
-             var postDto = await postService.CreateAsync(postCommand);
+             var postDto = await postService.CreatePostAsync(postCommand);
              
              return Results.Created($"/posts/{postDto.Id}", postDto); //{post.Id}
          }
