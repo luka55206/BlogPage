@@ -83,6 +83,7 @@ public static class PostEndpoints
              
              var post = await db.Posts
                               .Include(p => p.Author)
+                              .Include(p => p.PostTags)
                               .FirstOrDefaultAsync(p => p.Id == id);
 
              if (post is null)
@@ -91,7 +92,7 @@ public static class PostEndpoints
              }
              
              if(postAuthorId != post.AuthorId)
-                 return Results.Unauthorized();
+                 return Results.Forbid();
              
              
              post.Title =  request.title; 
@@ -124,7 +125,7 @@ public static class PostEndpoints
              
              
              if(authorId != post.AuthorId)
-                 return Results.Unauthorized();
+                 return Results.Forbid();
              
              db.Posts.Remove(post);
              await db.SaveChangesAsync();

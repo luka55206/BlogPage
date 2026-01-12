@@ -64,6 +64,12 @@ public class PostService
             .Reference(p => p.Author)
             .LoadAsync();
 
+        await _db.Entry(post)
+            .Collection(p => p.PostTags)
+            .Query()
+            .Include(pt => pt.Tag)
+            .LoadAsync();
+
         return PostMapper.toDto(post);
     }
 }

@@ -2,8 +2,10 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using BlogPage.Application.Common;
 using BlogPage.Application.Users;
 using BlogPage.Domain.Entities;
+using BlogPage.Application.Common;  // ← ADD THIS for validation
 using BlogPage.Persistence.Context;
 using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.EntityFrameworkCore;
@@ -16,8 +18,16 @@ public static class UserEndpoints
     public static IEndpointRouteBuilder MapUsersEndpoints(this IEndpointRouteBuilder app)
     {
         // POST /users/register
-        app.MapPost("/users/register", async (RegisterUserRequest request, BlogDbContext  db) =>
+        app.MapPost("/users/register", async (RegisterUserRequest request, BlogDbContext  db, IServiceProvider services) =>
             {
+                var (isValid, errorResult) = await request.ValidateAsync(services);
+
+                if (!isValid)
+                {
+                    return errorResult!;
+                }
+                
+                
                 var exists = await db.Users.AnyAsync( u => u.Email == request.Email || u.Username == request.Username);
 
                 if (exists)
