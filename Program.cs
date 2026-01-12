@@ -1,7 +1,9 @@
 using BlogPage.Application.Comments;
 using BlogPage.Application.Posts;
+using BlogPage.Application.Users.Validators;
 using BlogPage.Endpoints;
 using BlogPage.Persistence.Context;
+using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -63,6 +65,7 @@ builder.Services
 
 builder.Services.AddScoped<PostService>();
 builder.Services.AddScoped<CommentService>();
+builder.Services.AddValidatorsFromAssemblyContaining<RegisterUserRequestValidator>();
 
 builder.Services.AddAuthorization();
 //build
