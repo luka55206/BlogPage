@@ -5,6 +5,7 @@ using BlogPage.Endpoints;
 using BlogPage.Persistence.Context;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
+using BlogPage.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -72,6 +73,7 @@ builder.Services.AddAuthorization();
 var app = builder.Build();
 
 //
+app.UseMiddleware<GlobalExceptionHandler>();
 app.UseAuthentication();
 app.UseAuthorization();
 
