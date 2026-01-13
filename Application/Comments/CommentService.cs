@@ -1,4 +1,5 @@
 ﻿using BlogPage.Domain.Entities;
+using BlogPage.Domain.Exceptions;
 using BlogPage.Persistence.Context;
 using Microsoft.EntityFrameworkCore;
 
@@ -18,7 +19,7 @@ public class CommentService
         var post = await _db.Posts.FindAsync(commentCommand.PostId);
                 
         if (post == null)
-            throw new KeyNotFoundException("Post not found");
+            throw new NotFoundException($"Post with id {commentCommand.PostId} does not exist");
                 
                 
         var comment = new Comment

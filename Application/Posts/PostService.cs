@@ -65,7 +65,7 @@ public class PostService
             .LoadAsync();
 
         await _db.Entry(post)
-            .Collection(p => p.PostTags)
+            .Collection(p => p.PostTags) 
             .Query()
             .Include(pt => pt.Tag)
             .LoadAsync();
