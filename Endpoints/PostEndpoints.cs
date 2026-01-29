@@ -3,6 +3,7 @@ using BlogPage.Application.Posts;
 using BlogPage.Domain.Entities;
 using BlogPage.Persistence.Context;
 using Microsoft.EntityFrameworkCore;
+using BlogPage.Application.Common;
 
 namespace BlogPage.Endpoints;
 
@@ -33,18 +34,66 @@ public static class PostEndpoints
      ).RequireAuthorization();
 
     //get all posts
-     app.MapGet("/posts", async (BlogDbContext db) =>
+     app.MapGet("/posts", async ([AsParameters] PostFilterParams filters,
+             BlogDbContext db) =>
          {
            
 
-             var posts = await db.Posts
-                 .Include(p=> p.Author)
-                 .OrderByDescending(p => p.PublishDate)
-                 .ToListAsync();
-             
-             var postsDto = posts.Select(PostMapper.toDto);
+             var query = db.Posts
+                 .Include(p => p.Author)
+                 .Include(p => p.PostTags)
+                 .ThenInclude(pt => pt.Tag)
+                 .AsQueryable();
 
-             return Results.Ok(postsDto);
+             // Search filter
+             if (!string.IsNullOrEmpty(filters.Search))
+             {
+                 var searchLower = filters.Search.ToLower();
+                 query = query.Where(p =>
+                     p.Title.ToLower().Contains(searchLower) ||
+                     p.Content.ToLower().Contains(searchLower));
+             }
+
+             // Tag filter
+             if (!string.IsNullOrEmpty(filters.Tag))
+             {
+                 var tagLower = filters.Tag.ToLower();
+                 query = query.Where(p =>
+                     p.PostTags.Any(pt => pt.Tag.Name == tagLower));
+             }
+
+             // Author filter
+             if (filters.AuthorId.HasValue)
+             {
+                 query = query.Where(p => p.AuthorId == filters.AuthorId.Value);
+             }
+
+             // Sorting
+             query = filters.SortBy?.ToLower() switch
+             {
+                 "title" => filters.SortOrder?.ToLower() == "asc"
+                     ? query.OrderBy(p => p.Title)
+                     : query.OrderByDescending(p => p.Title),
+                 "author" => filters.SortOrder?.ToLower() == "asc"
+                     ? query.OrderBy(p => p.Author.Username)
+                     : query.OrderByDescending(p => p.Author.Username),
+                 _ => filters.SortOrder?.ToLower() == "asc"
+                     ? query.OrderBy(p => p.PublishDate)
+                     : query.OrderByDescending(p => p.PublishDate)
+             };
+
+             var paginatedPosts = await query.ToPaginatedListAsync(
+                 filters.Page,
+                 filters.PageSize);
+
+             return Results.Ok(new PaginatedResult<PostDto>
+             {
+                 Data = paginatedPosts.Data.Select(PostMapper.toDto).ToList(),
+                 Page = paginatedPosts.Page,
+                 PageSize = paginatedPosts.PageSize,
+                 TotalCount = paginatedPosts.TotalCount,
+                 TotalPages = paginatedPosts.TotalPages
+             });
              
              
 
