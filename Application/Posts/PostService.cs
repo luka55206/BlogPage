@@ -7,69 +7,93 @@ namespace BlogPage.Application.Posts;
 public class PostService
 {
     private readonly BlogDbContext _db;
+    private readonly ILogger<PostService> _logger;  
 
-    public PostService(BlogDbContext db)
+
+    public PostService(BlogDbContext db, ILogger<PostService> logger)
     {
         _db = db;
+        _logger = logger;
     }
+    
     
     public  async Task<PostDto> CreatePostAsync(
         CreatePostCommand postCommand)
     {
-        var cleanTags = postCommand.Tags
-            .Select( t => t.Trim().ToLower() )
-            .Where(t => !string.IsNullOrWhiteSpace(t))
-            .Distinct()
-            .ToList();
-
-        var existingTags = await _db.Tags
-            .Where(t => cleanTags.Contains(t.Name))
-            .ToListAsync();
-        
-        var newTags = cleanTags
-            .Where(t => existingTags.All(et => et.Name != t))
-            .Select(t => new Tag { Name = t })
-            .ToList();
-
-        _db.Tags.AddRange(newTags);
-        //await _db.SaveChangesAsync();
-        
-        var allTags = existingTags.Concat(newTags).ToList();
-
-        var post = new Post
+        _logger.LogInformation(
+            "Creating post '{Title}' by user {UserId}", 
+            postCommand.Title, 
+            postCommand.AuthorId);
+        try
         {
-            AuthorId = postCommand.AuthorId,
-            Title = postCommand.Title,
-            Content = postCommand.Content,
-            PublishDate = DateTime.UtcNow
+            var cleanTags = postCommand.Tags
+                .Select(t => t.Trim().ToLower())
+                .Where(t => !string.IsNullOrWhiteSpace(t))
+                .Distinct()
+                .ToList();
 
-        };
-        
-        
-        _db.Posts.Add(post);
-        //await _db.SaveChangesAsync();
+            var existingTags = await _db.Tags
+                .Where(t => cleanTags.Contains(t.Name))
+                .ToListAsync();
 
-        var postTags = allTags.Select(tag => new PostTags
+            var newTags = cleanTags
+                .Where(t => existingTags.All(et => et.Name != t))
+                .Select(t => new Tag { Name = t })
+                .ToList();
+
+            _db.Tags.AddRange(newTags);
+            //await _db.SaveChangesAsync();
+
+            var allTags = existingTags.Concat(newTags).ToList();
+
+            var post = new Post
+            {
+                AuthorId = postCommand.AuthorId,
+                Title = postCommand.Title,
+                Content = postCommand.Content,
+                PublishDate = DateTime.UtcNow
+
+            };
+
+
+            _db.Posts.Add(post);
+            //await _db.SaveChangesAsync();
+
+            var postTags = allTags.Select(tag => new PostTags
+            {
+                Post = post,
+                Tag = tag
+            });
+
+            _db.PostTags.AddRange(postTags);
+            await _db.SaveChangesAsync();
+
+
+
+            await _db.Entry(post)
+                .Reference(p => p.Author)
+                .LoadAsync();
+
+            await _db.Entry(post)
+                .Collection(p => p.PostTags)
+                .Query()
+                .Include(pt => pt.Tag)
+                .LoadAsync();
+            
+            _logger.LogInformation(
+                "Post {PostId} created successfully", 
+                post.Id);
+
+            return PostMapper.toDto(post);
+        }
+        catch (Exception ex)
         {
-            Post = post,
-            Tag = tag
-        });
+            _logger.LogError(ex, 
+                "Error creating post '{Title}'", 
+                postCommand.Title);  // ← ADD THIS
+            throw;
+        }
         
-        _db.PostTags.AddRange(postTags);
-        await _db.SaveChangesAsync();
         
-             
-             
-        await _db.Entry(post)
-            .Reference(p => p.Author)
-            .LoadAsync();
-
-        await _db.Entry(post)
-            .Collection(p => p.PostTags) 
-            .Query()
-            .Include(pt => pt.Tag)
-            .LoadAsync();
-
-        return PostMapper.toDto(post);
     }
 }

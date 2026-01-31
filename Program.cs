@@ -6,95 +6,139 @@ using BlogPage.Persistence.Context;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using BlogPage.Middleware;
+using Serilog;
 
-var builder = WebApplication.CreateBuilder(args);
+// Configure Serilog BEFORE building the app
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft", Serilog.Events.LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore", Serilog.Events.LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .Enrich.WithProperty("Application", "BlogPage")
+    .WriteTo.Console(
+        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+    .WriteTo.File(
+        path: "logs/blogpage-.log",
+        rollingInterval: RollingInterval.Day,
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}",
+        retainedFileCountLimit: 30)
+    .CreateLogger();
 
-//dbcontext
-builder.Services.AddDbContext<BlogDbContext>(options => options.UseSqlite("Data Source=blogpage.db"));
 
-// swagger
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(c =>
+try
 {
-    c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
-    {
-        Name = "Authorization",
-        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
-        Scheme = "Bearer",
-        BearerFormat = "JWT",
-        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
-        Description = "Enter: Bearer {your token}"
-    });
+    Log.Information("Starting BlogPage API");
+    
+    var builder = WebApplication.CreateBuilder(args);
+    
+    // Use Serilog
+    builder.Host.UseSerilog();
 
-    c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
-    {
+    //dbcontext
+        builder.Services.AddDbContext<BlogDbContext>(options => options.UseSqlite("Data Source=blogpage.db"));
+
+    // swagger
+        builder.Services.AddEndpointsApiExplorer();
+        builder.Services.AddSwaggerGen(c =>
         {
-            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+            c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
             {
-                Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                Name = "Authorization",
+                Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+                Scheme = "Bearer",
+                BearerFormat = "JWT",
+                In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+                Description = "Enter: Bearer {your token}"
+            });
+
+            c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+            {
                 {
-                    Id = "Bearer",
-                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme
+                    new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+                    {
+                        Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                        {
+                            Id = "Bearer",
+                            Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme
+                        }
+                    },
+                    new string[] { }
                 }
-            },
-            new string[] {}
-        }
-    });
-});
+            });
+        });
 
-//JWT TOken
-var jwtKey = "adzinoki_volki_matraxs_ar_dairtyams"; // long random string
-var jwtIssuer = "BlogPage";
-var jwtAudience = "BlogPageUsers";
+    //JWT TOken
+        var jwtKey = "adzinoki_volki_matraxs_ar_dairtyams"; // long random string
+        var jwtIssuer = "BlogPage";
+        var jwtAudience = "BlogPageUsers";
 
-builder.Services
-    .AddAuthentication("Bearer")
-    .AddJwtBearer("Bearer", options =>
-    {
-        options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+        builder.Services
+            .AddAuthentication("Bearer")
+            .AddJwtBearer("Bearer", options =>
+            {
+                options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+                {
+                    ValidateIssuer = true,
+                    ValidateAudience = true,
+                    ValidateIssuerSigningKey = true,
+                    ValidateLifetime = true,
+                    ValidIssuer = jwtIssuer,
+                    ValidAudience = jwtAudience,
+                    IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(
+                        System.Text.Encoding.UTF8.GetBytes(jwtKey))
+                };
+            });
+
+        builder.Services.AddScoped<PostService>();
+        builder.Services.AddScoped<CommentService>();
+        builder.Services.AddValidatorsFromAssemblyContaining<RegisterUserRequestValidator>();
+
+        builder.Services.AddAuthorization();
+    //build
+        var app = builder.Build();
+
+    //
+        app.UseMiddleware<GlobalExceptionHandler>();
+        
+        // Serilog request logging
+        app.UseSerilogRequestLogging(options =>
         {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateIssuerSigningKey = true,
-            ValidateLifetime = true,
-            ValidIssuer = jwtIssuer,
-            ValidAudience = jwtAudience,
-            IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(
-                System.Text.Encoding.UTF8.GetBytes(jwtKey))
-        };
-    });
-
-builder.Services.AddScoped<PostService>();
-builder.Services.AddScoped<CommentService>();
-builder.Services.AddValidatorsFromAssemblyContaining<RegisterUserRequestValidator>();
-
-builder.Services.AddAuthorization();
-//build
-var app = builder.Build();
-
-//
-app.UseMiddleware<GlobalExceptionHandler>();
-app.UseAuthentication();
-app.UseAuthorization();
+            options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
+            {
+                diagnosticContext.Set("RequestHost", httpContext.Request.Host.Value);
+                diagnosticContext.Set("RequestScheme", httpContext.Request.Scheme);
+            };
+        });
+        app.UseAuthentication();
+        app.UseAuthorization();
 
 
 
 
-// Enable Swagger UI
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    // Enable Swagger UI
+        if (app.Environment.IsDevelopment())
+        {
+            app.UseSwagger();
+            app.UseSwaggerUI();
+        }
+
+    //addendpoint
+        app.MapUsersEndpoints();
+        app.MapPostEndpoints();
+        app.MapCommentsEndpoints();
+        
+
+        Log.Information("BlogPage API started successfully");
+        app.Run();
 }
-
-//addendpoint
-app.MapUsersEndpoints();
-app.MapPostEndpoints();
-app.MapCommentsEndpoints();
-
-
-app.Run();
-
+catch (Exception ex)
+{
+    Log.Fatal(ex, "Unhandled exception");
+}
+finally
+{
+    Log.CloseAndFlush();
+}
 
 
 public partial class Program { }
